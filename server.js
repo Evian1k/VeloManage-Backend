@@ -10,7 +10,6 @@ import mongoose from 'mongoose';
 // Import routes
 import authRoutes from './src/routes/auth.js';
 import userRoutes from './src/routes/users.js';
-
 import serviceRoutes from './src/routes/services.js';
 import truckRoutes from './src/routes/trucks.js';
 import messageRoutes from './src/routes/messages.js';
@@ -18,7 +17,7 @@ import pickupRoutes from './src/routes/pickups.js';
 import branchRoutes from './src/routes/branches.js';
 import bookingRoutes from './src/routes/bookings.js';
 import analyticsRoutes from './src/routes/analytics.js';
-import dashboardRoutes from './src/routes/dashboard.js  ';
+import dashboardRoutes from './src/routes/dashboard.js';
 import locationRoutes from './src/routes/locations.js';
 
 // Import middleware
@@ -31,7 +30,7 @@ dotenv.config();
 const app = express();
 const server = createServer(app);
 
-// Socket.io setup for real-time features
+// Socket.io setup
 const io = new Server(server, {
   cors: {
     origin: process.env.SOCKET_CORS_ORIGIN || "http://localhost:5173",
@@ -40,7 +39,7 @@ const io = new Server(server, {
 });
 
 // Database connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://emmanuelevian:Z58ZyStj6F8arwu6@cluster0.dypf6w2.mongodb.net/autocare-pro?retryWrites=true&w=majority', {
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
@@ -49,7 +48,6 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://emmanuelevian:Z58ZyStj6
   console.error("❌ MongoDB connection error:", err);
   process.exit(1);
 });
-
 
 // Middleware
 app.use(helmet());
@@ -63,7 +61,7 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: {
     error: 'Too many requests from this IP, please try again later.'
@@ -97,7 +95,7 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
-    version: process.env.API_VERSION || 'v1'
+    version: apiVersion
   });
 });
 
@@ -122,48 +120,37 @@ app.get('/', (req, res) => {
   });
 });
 
-// Socket.io connection handling
+// Socket.io handling
 io.on('connection', (socket) => {
   console.log('👤 User connected:', socket.id);
 
-  // Join user to their room for personal notifications
   socket.on('join-user-room', (userId) => {
     socket.join(`user-${userId}`);
     console.log(`👤 User ${userId} joined their room`);
   });
 
-  // Join admin to admin room
   socket.on('join-admin-room', () => {
     socket.join('admin-room');
     console.log('👨‍💼 Admin joined admin room');
   });
 
-  // Handle truck location updates
   socket.on('truck-location-update', (data) => {
-    // Broadcast to all connected clients
     socket.broadcast.emit('truck-location-updated', data);
   });
 
-  // Handle new messages
   socket.on('new-message', (data) => {
     if (data.recipientType === 'admin') {
-      // Send to admin room
       socket.to('admin-room').emit('message-received', data);
     } else {
-      // Send to specific user
       socket.to(`user-${data.recipientId}`).emit('message-received', data);
     }
   });
 
-  // Handle pickup requests
   socket.on('new-pickup-request', (data) => {
-    // Notify all admins
     socket.to('admin-room').emit('pickup-request-received', data);
   });
 
-  // Handle truck dispatch
   socket.on('truck-dispatched', (data) => {
-    // Notify the specific user
     socket.to(`user-${data.userId}`).emit('truck-dispatch-update', data);
   });
 
@@ -175,7 +162,7 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.set('socketio', io);
 
-// Error handling middleware
+// Error handling
 app.use(errorHandler);
 
 // 404 handler
@@ -187,12 +174,13 @@ app.use('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
+const API_PUBLIC_URL = process.env.VITE_PROD_API_URL || `http://localhost:${PORT}/api/${apiVersion}`;
 
 server.listen(PORT, () => {
   console.log(`🚀 AutoCare Pro Backend Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📡 API Base URL: http://localhost:${PORT}/api/${apiVersion}`);
-  console.log(`🔧 Health Check: http://localhost:${PORT}/health`);
+  console.log(`📡 API Base URL: ${API_PUBLIC_URL}`);
+  console.log(`🔧 Health Check: ${API_PUBLIC_URL.replace(`/api/${apiVersion}`, '/health')}`);
 });
 
 // Graceful shutdown
